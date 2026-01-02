@@ -7,6 +7,9 @@ from stats_functions import (
     calculate_mde,
     calculate_confidence_interval,
     calculate_relative_lift,
+    calculate_cuped_adjustment,
+    cuped_ab_test,
+    calculate_cuped_sample_size,
 )
 
 
@@ -97,3 +100,31 @@ def test_sim_no_effect():
     # false positive rate should be near alpha (0.05)
     assert r["statistical_power"] < 0.15
 
+
+# --- CUPED ---
+
+def test_cuped_variance_reduction():
+    np.random.seed(42)
+    n = 2000
+    pre = np.random.normal(0, 1, n)
+    post = 0.7 * pre + 0.3 * np.random.normal(0, 1, n)
+    _, _, var_red = calculate_cuped_adjustment(post, pre)
+    assert var_red > 30
+
+def test_cuped_ab_test_structure():
+    np.random.seed(42)
+    n = 1000
+    ctrl_pre = np.random.normal(0, 1, n)
+    ctrl_post = 0.5 * ctrl_pre + np.random.normal(0, 1, n)
+    treat_pre = np.random.normal(0, 1, n)
+    treat_post = 0.5 * treat_pre + np.random.normal(0.1, 1, n)
+
+    results = cuped_ab_test(ctrl_post, ctrl_pre, treat_post, treat_pre)
+    assert "original" in results and "cuped" in results
+    # cuped should have smaller SE
+    assert results["cuped"]["se"] < results["original"]["se"]
+
+def test_cuped_sample_size_savings():
+    original = calculate_sample_size(0.10, 0.02)
+    with_cuped = calculate_cuped_sample_size(0.10, 0.02, variance_reduction=0.3)
+    assert with_cuped < original
