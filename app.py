@@ -68,11 +68,12 @@ with st.sidebar:
     confidence_level = 1 - alpha
     st.info(f"Confidence Level: {confidence_level*100:.0f}%")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Sample Size Calculator",
     "Power Analysis",
     "Experiment Simulator",
     "CUPED Analysis",
+    "AI Assistant"
 ])
 
 with tab1:
@@ -865,6 +866,85 @@ with tab4:
                 st.error(f"Error processing input: {str(e)}")
                 st.info("Make sure all values are numbers separated by commas.")
 
+with tab5:
+    st.header("AI Experiment Design Assistant")
+    st.markdown("""
+    Describe your experiment scenario in plain English, and I'll help you calculate sample sizes,
+    power, and duration estimates.
+
+    **Example questions:**
+    - *"Our checkout conversion is 3.2%. We want to detect a 10% relative improvement. How many users do we need?"*
+    - *"We have 5,000 daily users. How long would it take to run this experiment?"*
+    - *"Can we use CUPED to reduce the sample size? We have historical purchase data."*
+    """)
+
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if not api_key:
+        st.warning("OpenAI API key not found. Please add your API key to a `.env` file:")
+        st.code("OPENAI_API_KEY=sk-your-key-here", language="bash")
+        st.info("Once you add the key, restart the Streamlit app.")
+    else:
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        if "assistant" not in st.session_state:
+            try:
+                from llm_assistant import ExperimentAssistant
+                st.session_state.assistant = ExperimentAssistant(api_key=api_key)
+            except Exception as e:
+                st.error(f"Failed to initialize assistant: {e}")
+                st.session_state.assistant = None
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt := st.chat_input("Describe your experiment scenario..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            if st.session_state.assistant:
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        try:
+                            response = st.session_state.assistant.chat(prompt)
+                            st.markdown(response)
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        except Exception as e:
+                            error_msg = f"Error: {str(e)}"
+                            st.error(error_msg)
+                            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("Clear Chat"):
+                st.session_state.messages = []
+                if st.session_state.assistant:
+                    st.session_state.assistant.reset_conversation()
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Quick examples** (click to try):")
+
+        example_prompts = [
+            "Our homepage has a 5% click-through rate. We want to test a new hero banner and detect at least a 15% relative improvement. What sample size do we need?",
+            "We have 2,000 daily active users. Our current purchase rate is 2.5%. If we expect a 0.5 percentage point lift, how long should we run the test?",
+            "What's the minimum effect we can detect with 10,000 users per group if our baseline is 8%?"
+        ]
+
+        for i, example in enumerate(example_prompts):
+            if st.button(f"Example {i+1}", key=f"example_{i}"):
+                st.session_state.messages.append({"role": "user", "content": example})
+                if st.session_state.assistant:
+                    response = st.session_state.assistant.chat(example)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                st.rerun()
 
 st.markdown("---")
 st.markdown("""
